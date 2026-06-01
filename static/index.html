@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results Speedrun</title>
+    <meta name="description" content="Open Source CBSE Class XII Results Dashboard & Ledger">
+    <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.0.2">
+    <script defer src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script>window.DEMO_MODE = false;</script>
+    <script defer src="/static/js/main.js?v=1.0.5"></script>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="brand">
+            <div class="brand-text brand-text-container">
+                <h1>Results Speedrun</h1>
+                <p>Academic Analytics</p>
+            </div>
+        </div>
+        <div class="nav-menu">
+            <button class="nav-item active" onclick="switchView('scraper', this)"><i class="fa-regular fa-circle-play" aria-hidden="true"></i> Fetch Results</button>
+            <button class="nav-item" onclick="switchView('records', this)"><i class="fa-regular fa-folder-open" aria-hidden="true"></i> Records</button>
+            <button class="nav-item" onclick="switchView('analytics', this)"><i class="fa-regular fa-chart-bar" aria-hidden="true"></i> Analytics</button>
+        </div>
+        <div class="sidebar-footer">Results Speedrun</div>
+    </div>
+
+    <div class="main-content">
+        <div class="topbar">
+            <div class="search-wrapper hidden" id="searchWrapper">
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass search-icon" aria-hidden="true"></i>
+                    <input type="text" id="searchInput" placeholder="Search by name, roll, admit card..." oninput="handleSearch()" onfocus="handleSearch()">
+                    <button class="clear-btn" id="clearBtn" onclick="clearSearch()" aria-label="Clear search"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </div>
+                <div class="search-dropdown" id="searchDropdown"></div>
+            </div>
+            <div class="topbar-actions">
+                <select id="globalSchoolSelector" onchange="handleSchoolChange()" class="form-input-themed select--sm hidden">
+                    <!-- Options populated by JS -->
+                </select>
+                <button id="topbarPurgeBtn" class="btn btn--sm btn--ghost-danger hidden" onclick="clearDatabase()"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Clear data</button>
+                <div id="topbarConnectionBadge" class="status-badge idle">
+                    <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+                    <span id="topbarConnectionText">Idle</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW: SCRAPER -->
+        <div id="view-scraper" class="view-section active">
+            <div class="ledger-title-box">
+                <h1 id="typewriter-headline" class="typewriter-container"></h1>
+                <p>Enter school details to begin fetching results</p>
+            </div>
+
+            <div class="panel panel--featured">
+                <div class="panel-header"><span>Fetch configuration</span></div>
+                <div class="panel-body panel-body--flex">
+                    <div class="form-grid">
+                        <label class="form-label">
+                            <span>School registration no</span>
+                            <input type="text" id="schoolNo" placeholder="e.g. 12345" class="form-input-themed">
+                        </label>
+                        <label class="form-label">
+                            <span class="align-center-flex">
+                                Centre MID code
+                                <span class="tooltip-container">
+                                    <i class="fa-regular fa-circle-question info-tooltip-icon" aria-hidden="true"></i>
+                                    <span class="tooltip-text">Either check the two middle digits of your 6-digit centre code, or look at the last two digits of your admit card ID.</span>
+                                </span>
+                            </span>
+                            <input type="text" id="centreMid" placeholder="e.g. 67" class="form-input-themed">
+                        </label>
+                        <label class="form-label">
+                            <span>Starting roll no</span>
+                            <input type="text" id="rollStart" placeholder="e.g. 72510001" class="form-input-themed">
+                        </label>
+                        <label class="form-label">
+                            <span>Ending roll no</span>
+                            <input type="text" id="rollEnd" placeholder="e.g. 72510676" class="form-input-themed">
+                            <span id="rollCountMsg" class="form-help-text hidden"></span>
+                        </label>
+                    </div>
+                    
+                    <div class="form-grid">
+                        <label class="form-label">
+                            <span>Region</span>
+                            <select id="stateFilter" class="form-input-themed">
+                                <option value="default">Default (All India)</option>
+                                <option value="andhra_pradesh">Andhra Pradesh</option>
+                                <option value="arunachal_pradesh">Arunachal Pradesh</option>
+                                <option value="assam">Assam</option>
+                                <option value="bihar">Bihar</option>
+                                <option value="chhattisgarh">Chhattisgarh</option>
+                                <option value="delhi">Delhi</option>
+                                <option value="goa">Goa</option>
+                                <option value="gujarat">Gujarat</option>
+                                <option value="haryana">Haryana</option>
+                                <option value="himachal_pradesh">Himachal Pradesh</option>
+                                <option value="j_and_k">Jammu & Kashmir</option>
+                                <option value="jharkhand">Jharkhand</option>
+                                <option value="karnataka">Karnataka</option>
+                                <option value="kerala">Kerala</option>
+                                <option value="madhya_pradesh">Madhya Pradesh</option>
+                                <option value="maharashtra">Maharashtra</option>
+                                <option value="manipur">Manipur</option>
+                                <option value="meghalaya">Meghalaya</option>
+                                <option value="mizoram">Mizoram</option>
+                                <option value="nagaland">Nagaland</option>
+                                <option value="odisha">Odisha</option>
+                                <option value="punjab">Punjab</option>
+                                <option value="rajasthan">Rajasthan</option>
+                                <option value="sikkim">Sikkim</option>
+                                <option value="tamil_nadu">Tamil Nadu</option>
+                                <option value="telangana">Telangana</option>
+                                <option value="tripura">Tripura</option>
+                                <option value="uttar_pradesh">Uttar Pradesh</option>
+                                <option value="uttarakhand">Uttarakhand</option>
+                                <option value="west_bengal">West Bengal</option>
+                            </select>
+                        </label>
+                        <label class="form-label">
+                            <span>Fetch speed</span>
+                            <div class="segmented-control">
+                                <button type="button" class="segment-btn" onclick="setFetchSpeed('careful')" id="speed-careful">Careful</button>
+                                <button type="button" class="segment-btn active" onclick="setFetchSpeed('balanced')" id="speed-balanced">Balanced</button>
+                                <button type="button" class="segment-btn" onclick="setFetchSpeed('fast')" id="speed-fast">Fastest</button>
+                            </div>
+                            <input type="hidden" id="parallelWorkers" value="8">
+                            <span class="form-help-text" id="speedHelpText">Balanced speed (8 parallel workers) for optimal data retrieval.</span>
+                        </label>
+                    </div>
+
+                    <div class="form-actions">
+                        <button onclick="stopScrape()" id="stopBtn" class="btn btn--danger-outline btn--md hidden"><i class="fa-solid fa-stop" aria-hidden="true"></i> Stop</button>
+                        <button onclick="startScrape()" id="startBtn" class="btn btn--primary btn--md"><i class="fa-solid fa-play" aria-hidden="true"></i> Fetch results</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terminal and worker grid -->
+            <div class="panel">
+                <div class="panel-header panel-header--split">
+                    <span><i class="fa-regular fa-file-lines" aria-hidden="true"></i> Activity log</span>
+                    <div id="statusHeader" class="terminal-status hidden">
+                        <strong>Current roll:</strong> <span id="currentRollText" class="terminal-status-val">---</span>
+                        <span class="divider">|</span>
+                        <strong>Remaining:</strong> <span id="remainingRollsText">---</span>
+                        <span class="divider">|</span>
+                        <strong>Attempts:</strong> <span id="totalAttemptsText" class="terminal-status-val">0</span>
+                    </div>
+                </div>
+                <div class="panel-body terminal-panel-body">
+                    <div id="terminalsContainer" class="terminal-logs-container">
+                        <div id="term-main">
+                            <div class="empty-state">
+                                <i class="fa-regular fa-compass empty-state-icon" aria-hidden="true"></i>
+                                <div class="empty-state-title">No activity logged yet</div>
+                                <div class="empty-state-hint">Enter your school configurations above and click Fetch Results to start.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Worker Grid Floor -->
+            <div class="panel hidden" id="workerFloorPanel">
+                <div class="panel-header"><span>Parallel worker floor</span></div>
+                <div class="panel-body">
+                    <div id="workerFloorGrid" class="worker-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW: RECORDS -->
+        <div id="view-records" class="view-section">
+            <div class="ledger-title-box">
+                <h1>Results</h1>
+            </div>
+
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <i class="fa-solid fa-database kpi-card-icon" aria-hidden="true"></i>
+                    <span class="kpi-label">Total records</span>
+                    <span class="kpi-value" id="kpiTotal">0</span>
+                </div>
+                <div class="kpi-card">
+                    <i class="fa-solid fa-graduation-cap kpi-card-icon" aria-hidden="true"></i>
+                    <span class="kpi-label">Average score</span>
+                    <span class="kpi-value" id="kpiAvg">0%</span>
+                </div>
+                <div class="kpi-card">
+                    <i class="fa-solid fa-percent kpi-card-icon" aria-hidden="true"></i>
+                    <span class="kpi-label">Pass rate</span>
+                    <span class="kpi-value" id="kpiPass">0%</span>
+                </div>
+                <div class="kpi-card">
+                    <i class="fa-solid fa-award kpi-card-icon" aria-hidden="true"></i>
+                    <span class="kpi-label">Top score</span>
+                    <span class="kpi-value" id="kpiTop">0%</span>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header panel-header--split">
+                    <span>All students</span>
+                    <div class="table-actions-container">
+                        <span class="sort-label">Sort:</span>
+                        <select id="sortRecordsSelect" onchange="initDashboard()" class="form-input-themed select--sm">
+                            <option value="marks_desc">Marks (High to Low)</option>
+                            <option value="marks_asc">Marks (Low to High)</option>
+                            <option value="roll_asc">Roll No (Low to High)</option>
+                            <option value="roll_desc">Roll No (High to Low)</option>
+                        </select>
+                        <button class="btn btn-primary btn--sm" onclick="exportExcel()">
+                            <i class="fa-solid fa-file-excel" aria-hidden="true"></i> Export Excel
+                        </button>
+                        <button class="btn btn--ghost-danger btn--sm" onclick="clearDatabase()">
+                            <i class="fa-solid fa-trash-can" aria-hidden="true"></i> Clear data
+                        </button>
+                    </div>
+                </div>
+                <div class="table-scroll-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr><th>#</th><th>Roll no</th><th>Name</th><th class="numeric-col">Score</th><th>Result</th></tr>
+                        </thead>
+                        <tbody id="rankingBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW: ANALYTICS -->
+        <div id="view-analytics" class="view-section">
+            <div class="ledger-title-box">
+                <h1>Analytics</h1>
+            </div>
+
+            <div id="analyticsEmptyState" class="panel">
+                <div class="empty-state">
+                    <i class="fa-regular fa-chart-bar empty-state-icon" aria-hidden="true"></i>
+                    <div class="empty-state-title">No analytics data available</div>
+                    <div class="empty-state-hint">Fetch school results first to visualize performance metrics.</div>
+                </div>
+            </div>
+
+            <div id="analyticsChartsContent" class="hidden">
+                <div class="panel">
+                    <div class="panel-header analytics-header panel-header--split">
+                        <span>Statistical overview</span>
+                        <div class="stream-filter">
+                            <button class="filter-btn active" onclick="setAnalyticsFilter('all', this)">All streams</button>
+                            <button class="filter-btn" onclick="setAnalyticsFilter('science', this)">Science</button>
+                            <button class="filter-btn" onclick="setAnalyticsFilter('commerce', this)">Commerce</button>
+                            <button class="filter-btn" onclick="setAnalyticsFilter('arts', this)">Humanities</button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="chart-grid">
+                            <div class="chart-card">
+                                <div class="chart-card-header">
+                                    <div class="chart-card-title">Result distribution</div>
+                                    <div class="chart-card-caption">Proportion of passing, compartment, and failing students</div>
+                                </div>
+                                <div id="chart-pass-fail" class="chart-container"></div>
+                            </div>
+                            <div class="chart-card">
+                                <div class="chart-card-header">
+                                    <div class="chart-card-title">Score distribution</div>
+                                    <div class="chart-card-caption">Density of marks scored in 5% increments</div>
+                                </div>
+                                <div id="chart-score-dist" class="chart-container"></div>
+                            </div>
+                            <div class="chart-card">
+                                <div class="chart-card-header">
+                                    <div class="chart-card-title">Subject averages</div>
+                                    <div class="chart-card-caption">Mean score obtained per individual subject code</div>
+                                </div>
+                                <div id="chart-subject-avg" class="chart-container"></div>
+                            </div>
+                            <div class="chart-card">
+                                <div class="chart-card-header">
+                                    <div class="chart-card-title">Performance tiers</div>
+                                    <div class="chart-card-caption">Classification of scores by academic valuation bands</div>
+                                </div>
+                                <div id="chart-category-donut" class="chart-container"></div>
+                            </div>
+                            <div class="chart-card">
+                                <div class="chart-card-header">
+                                    <div class="chart-card-title">Marks spread by stream</div>
+                                    <div class="chart-card-caption">Percentage score distributions across academic streams</div>
+                                </div>
+                                <div id="chart-theory-practical" class="chart-container"></div>
+                            </div>
+                            <div class="chart-card">
+                                <div class="chart-card-header">
+                                    <div class="chart-card-title">Subject failure rates</div>
+                                    <div class="chart-card-caption">Percentage of compartment and fail status per subject</div>
+                                </div>
+                                <div id="chart-subject-fail" class="chart-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stream-grid">
+                    <div class="panel">
+                        <div class="panel-header"><span>Science toppers</span></div>
+                        <table class="data-table">
+                            <thead><tr><th>#</th><th>Name</th><th class="numeric-col">%</th></tr></thead>
+                            <tbody id="scienceToppers"></tbody>
+                        </table>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-header"><span>Commerce toppers</span></div>
+                        <table class="data-table">
+                            <thead><tr><th>#</th><th>Name</th><th class="numeric-col">%</th></tr></thead>
+                            <tbody id="commerceToppers"></tbody>
+                        </table>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-header"><span>Humanities toppers</span></div>
+                        <table class="data-table">
+                            <thead><tr><th>#</th><th>Name</th><th class="numeric-col">%</th></tr></thead>
+                            <tbody id="artsToppers"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header"><span>Subject toppers</span></div>
+                    <div class="panel-body">
+                        <div id="mvpGrid"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- STUDENT DETAIL OVERLAY -->
+    <div class="student-detail-overlay" id="studentDetailOverlay" onclick="if(event.target===this)closeDetail()">
+        <div class="student-detail-card">
+            <div class="detail-header">
+                <div>
+                    <div class="detail-name" id="detailName">-</div>
+                    <div class="detail-meta">
+                        <div class="tag"><i class="fa-solid fa-hashtag" aria-hidden="true"></i> Roll: <span id="detailRoll">-</span></div>
+                        <div class="tag"><i class="fa-solid fa-id-card" aria-hidden="true"></i> Admit: <span id="detailAdmid">-</span></div>
+                        <div class="tag"><i class="fa-solid fa-user-tie" aria-hidden="true"></i> Father: <span id="detailFather">-</span></div>
+                        <div class="tag"><i class="fa-solid fa-user-graduate" aria-hidden="true"></i> Mother: <span id="detailMother">-</span></div>
+                    </div>
+                </div>
+                <div class="detail-header-actions">
+                    <div class="detail-status" id="detailStatus">Pass</div>
+                    <button class="close-btn delete-btn-tint" id="deleteStudentBtn" onclick="deleteCurrentStudent()" title="Delete Record" aria-label="Delete student record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                    <button class="close-btn" onclick="closeDetail()" aria-label="Close detail modal"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </div>
+            </div>
+            <div class="detail-body">
+                <table class="data-table">
+                    <thead>
+                        <tr><th>Code</th><th>Subject</th><th class="numeric-col">Theory</th><th class="numeric-col">Practical</th><th class="numeric-col">Total</th></tr>
+                    </thead>
+                    <tbody id="detailMarks"></tbody>
+                </table>
+            </div>
+            <div class="detail-footer">
+                <span>Overall score: <strong id="detailPerc">0%</strong></span>
+                <span>Best of 5 score: <strong id="detailBest5">0%</strong></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- FILTERED STUDENTS MODAL -->
+    <div class="modal-overlay" id="studentModal" onclick="if(event.target===this)this.classList.remove('open')">
+        <div class="modal-content">
+            <div class="panel-header">
+                <span id="modalTitle">Students registry</span>
+                <button onclick="document.getElementById('studentModal').classList.remove('open')" class="modal-close-btn" aria-label="Close registry modal"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </div>
+            <div class="modal-body-scroll">
+                <table class="data-table">
+                    <thead><tr><th>Roll no</th><th>Name</th><th class="numeric-col">Score</th><th>Result</th></tr></thead>
+                    <tbody id="modalBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- WORKER LOG OVERLAY -->
+    <div class="student-detail-overlay" id="workerLogOverlay" onclick="if(event.target===this)closeWorkerLog()">
+        <div class="worker-log-card">
+            <div class="detail-header">
+                <div class="detail-name" id="workerLogTitle" style="font-size:16px;">Worker</div>
+                <div class="detail-header-actions">
+                    <button class="close-btn" onclick="closeWorkerLog()" aria-label="Close worker log"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </div>
+            </div>
+            <div class="worker-log-body" id="workerLogBody"></div>
+        </div>
+    </div>
+
+</body>
+</html>

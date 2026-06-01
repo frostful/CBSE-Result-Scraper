@@ -1,0 +1,15 @@
+# Python compiler artifacts
+__pycache__/
+*.pyc
+*.pyo
+
+# Exclude local result databases except for gitkeep and the dummy demo dataset
+data/*
+!data/.gitkeep
+!data/Demo_Results_results.csv
+
+# Logs and driver outputs
+geckodriver.log
+.env
+.vscode/
+.idea/
