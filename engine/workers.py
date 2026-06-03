@@ -1,7 +1,10 @@
 """Async prefix-cracking worker."""
 import time
 import random
+import logging
 import asyncio
+
+logger = logging.getLogger(__name__)
 
 from cbse.endpoints import RESULT_URL
 from cbse.selectors import XPATH_ROLL
@@ -40,7 +43,7 @@ async def worker_crack_async(page, prefix_queue, roll, school_no, centre_mid, fo
 
             if found_event.is_set():
                 try: prefix_queue.put_nowait(p)
-                except: pass
+                except Exception: pass
                 return
 
             page._dialog_fired = False
@@ -98,7 +101,7 @@ async def worker_crack_async(page, prefix_queue, roll, school_no, centre_mid, fo
 
         except asyncio.CancelledError:
             try: prefix_queue.put_nowait(p)
-            except: pass
+            except Exception: pass
             return
         except Exception:
             if found_event.is_set():
@@ -117,8 +120,8 @@ async def worker_crack_async(page, prefix_queue, roll, school_no, centre_mid, fo
 
             if not recovered:
                 try: prefix_queue.put_nowait(p)
-                except: pass
+                except Exception: pass
                 q.put(f"   [!] [W{thread_id+1}] Worker could not recover after 3 retries. Returning work to queue.")
                 return
             try: prefix_queue.put_nowait(p)
-            except: pass
+            except Exception: pass

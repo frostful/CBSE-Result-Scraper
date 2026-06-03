@@ -4,6 +4,9 @@ Parse a CBSE result HTML page into a structured student record.
 >>> EDIT THIS FILE if CBSE changes the result page layout (labels, tables, etc.). <<<
 """
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 try:
     from bs4 import BeautifulSoup
@@ -67,4 +70,5 @@ def parse_student_html(html_text, roll_no, admid):
             'ResultStatus': result_status, 'Subjects': subjects_data
         }
     except Exception:
+        logger.warning("Failed to parse HTML for roll=%s admid=%s", roll_no, admid, exc_info=True)
         return None

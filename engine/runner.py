@@ -3,9 +3,12 @@ import os
 import csv
 import time
 import random
+import logging
 import threading
 import queue
 import asyncio
+
+logger = logging.getLogger(__name__)
 
 from config import DATA_DIR
 from cbse.endpoints import RESULT_URL
@@ -97,7 +100,8 @@ async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, sto
         try:
             await browser.close()
             await pw.stop()
-        except: pass
+        except Exception as exc:
+            logger.debug("Browser cleanup error (non-critical): %s", exc)
         return
 
     q.put(f"[*] All {len(pages)} workers online. Starting async scrape...")
@@ -117,8 +121,8 @@ async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, sto
                         for sub in s['Subjects']:
                             writer.writerow([s['Roll'], s['Name'], s['MotherName'], s['FatherName'], s['SchoolName'], sub['SubCode'], sub['SubName'], sub['Theory'], sub['Practical'], sub['Total'], sub['Grade'], s['ResultStatus']])
                 results_data.clear()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to write partial CSV results: %s", exc)
 
     session_start = time.time()
 
@@ -233,11 +237,13 @@ async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, sto
             
     for p in pages:
         try: await p.context.close()
-        except: pass
+        except Exception as exc:
+            logger.debug("Context close error (non-critical): %s", exc)
     try:
         await browser.close()
         await pw.stop()
-    except: pass
+    except Exception as exc:
+        logger.debug("Browser cleanup error (non-critical): %s", exc)
     cleanup_orphaned_browsers()
     
     save_partial_data()

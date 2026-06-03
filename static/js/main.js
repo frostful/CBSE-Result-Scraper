@@ -35,9 +35,15 @@ function formatPercent(num, useInlineMin = false) {
     return num.toFixed(1) + '%';
 }
 
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+}
+
 function formatLogLine(msg, statusType = 'info') {
     const timeStr = new Date().toTimeString().split(' ')[0]; // "HH:MM:SS"
-    return `<div class="log-row log-row--${statusType}">[${timeStr}] ${msg}</div>`;
+    return `<div class="log-row log-row--${statusType}">[${timeStr}] ${escapeHtml(msg)}</div>`;
 }
 
 const CONN_LABELS = { idle: 'Idle', fetching: 'Fetching...', done: 'Done', halted: 'Halted' };
@@ -1010,9 +1016,9 @@ async function pollLogs() {
                     for (let i = 1; i <= currentWorkerCount; i++) {
                         const wBody = document.getElementById('worker-body-' + i);
                         if (wBody) {
-                            wBody.innerHTML = `<div class="line-in text-muted">GET roll=${parts[0]}</div><div class="line-in text-muted">solving cf-turnstile...</div>`;
+                            wBody.innerHTML = `<div class="line-in text-muted">GET roll=${escapeHtml(parts[0])}</div><div class="line-in text-muted">solving cf-turnstile...</div>`;
                         }
-                        workerLogs[i] = [`<div class="line-in text-muted">GET roll=${parts[0]}</div>`, `<div class="line-in text-muted">solving cf-turnstile...</div>`];
+                        workerLogs[i] = [`<div class="line-in text-muted">GET roll=${escapeHtml(parts[0])}</div>`, `<div class="line-in text-muted">solving cf-turnstile...</div>`];
                         workerBodyInited[i] = true;
                         setWorkerStatus(i, 'working', 'working');
                     }
@@ -1030,7 +1036,7 @@ async function pollLogs() {
                                 wBody.innerHTML = "";
                                 workerBodyInited[workerId] = true;
                             }
-                            const cleanLine = line.replace(/\[W\d+\]/gi, '').trim();
+                            const cleanLine = escapeHtml(line.replace(/\[W\d+\]/gi, '').trim());
                             wBody.innerHTML += `<div class="line-in">${cleanLine}</div>`;
                             if (!workerLogs[workerId]) workerLogs[workerId] = [];
                             workerLogs[workerId].push(`<div class="line-in">${cleanLine}</div>`);

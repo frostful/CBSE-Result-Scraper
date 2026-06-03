@@ -6,6 +6,7 @@ mirrors the original single-process design: one scrape at a time, logs polled by
 the front end.
 """
 import os
+import re
 import glob
 import threading
 
@@ -19,6 +20,23 @@ log_lines = []
 scraping_in_progress = False
 stop_event = threading.Event()
 log_lock = threading.Lock()
+
+
+def _sanitize_identifier(value):
+    """Strip a value to alphanumeric + underscore only. Prevents path traversal."""
+    if not value or not isinstance(value, str):
+        return None
+    cleaned = re.sub(r'[^A-Za-z0-9_]', '', value)
+    return cleaned if cleaned else None
+
+
+def _validate_positive_int(value):
+    """Return int if value is a positive integer string, else None."""
+    try:
+        n = int(value)
+        return n if n > 0 else None
+    except (TypeError, ValueError):
+        return None
 
 
 def scraping_task(school_no, centre_mid, roll_start, roll_end, state="default", workers=1):
@@ -68,7 +86,7 @@ def init_routes(app):
 
     @app.route('/api/dashboard_data')
     def dashboard_data():
-        school_no = request.args.get('school_no')
+        school_no = _sanitize_identifier(request.args.get('school_no'))
         if not school_no:
             return jsonify({"error": "No school selected"}), 400
         data = get_dashboard_data(school_no)
@@ -81,16 +99,16 @@ def init_routes(app):
     @app.route('/api/start_scrape', methods=['POST'])
     def start_scrape():
         global scraping_in_progress
-        data = request.json
-        school_no  = data.get('school_no')
-        centre_mid = data.get('centre_mid')
-        roll_start = data.get('roll_start')
-        roll_end   = data.get('roll_end')
-        state      = data.get('state', 'default')
-        workers    = min(int(data.get('workers', 1)), MAX_WORKERS)
+        data = request.json or {}
+        school_no  = _sanitize_identifier(data.get('school_no'))
+        centre_mid = _sanitize_identifier(data.get('centre_mid'))
+        roll_start = _validate_positive_int(data.get('roll_start'))
+        roll_end   = _validate_positive_int(data.get('roll_end'))
+        state      = _sanitize_identifier(data.get('state', 'default')) or 'default'
+        workers    = max(1, min(int(data.get('workers', 1)), MAX_WORKERS))
 
         if not all([school_no, centre_mid, roll_start, roll_end]):
-            return jsonify({"status": "error", "message": "Missing required fields."}), 400
+            return jsonify({"status": "error", "message": "Missing or invalid required fields."}), 400
 
         with log_lock:
             if scraping_in_progress:
@@ -128,7 +146,9 @@ def init_routes(app):
 
     @app.route('/api/delete_database', methods=['DELETE'])
     def api_delete_database():
-        school_no = request.args.get('school_no')
+        school_no = _sanitize_identifier(request.args.get('school_no'))
+        if not school_no:
+            return jsonify({"status": "error", "message": "Invalid school number."}), 400
         success = delete_database(school_no)
         if success:
             return jsonify({"status": "success", "message": "Database cleared."})
@@ -136,7 +156,9 @@ def init_routes(app):
 
     @app.route('/api/export_excel', methods=['GET'])
     def export_excel():
-        school_no = request.args.get('school_no')
+        school_no = _sanitize_identifier(request.args.get('school_no'))
+        if not school_no:
+            return "Invalid school number.", 400
         excel_stream = generate_excel_bytes(school_no)
         if not excel_stream:
             return "No data found.", 404
@@ -149,8 +171,11 @@ def init_routes(app):
 
     @app.route('/api/delete_record/<roll>', methods=['DELETE'])
     def api_delete_record(roll):
-        school_no = request.args.get('school_no')
-        success = delete_record(roll, school_no)
+        school_no = _sanitize_identifier(request.args.get('school_no'))
+        validated_roll = _validate_positive_int(roll)
+        if not school_no or not validated_roll:
+            return jsonify({"status": "error", "message": "Invalid school number or roll."}), 400
+        success = delete_record(str(validated_roll), school_no)
         if success:
-            return jsonify({"status": "success", "message": f"Student {roll} deleted."})
-        return jsonify({"status": "error", "message": f"Failed to delete student {roll}."}), 500
+            return jsonify({"status": "success", "message": f"Student {validated_roll} deleted."})
+        return jsonify({"status": "error", "message": f"Failed to delete student {validated_roll}."}), 500
