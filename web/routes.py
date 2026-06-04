@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 HTTP routes and the background-scrape thread glue.
 
@@ -9,6 +11,7 @@ import os
 import re
 import glob
 import threading
+from typing import Any
 
 from flask import jsonify, request, send_file
 
@@ -22,7 +25,7 @@ stop_event = threading.Event()
 log_lock = threading.Lock()
 
 
-def _sanitize_identifier(value):
+def _sanitize_identifier(value: str | None) -> str | None:
     """Strip a value to alphanumeric + underscore only. Prevents path traversal."""
     if not value or not isinstance(value, str):
         return None
@@ -30,7 +33,7 @@ def _sanitize_identifier(value):
     return cleaned if cleaned else None
 
 
-def _validate_positive_int(value):
+def _validate_positive_int(value: Any) -> int | None:
     """Return int if value is a positive integer string, else None."""
     try:
         n = int(value)
@@ -39,7 +42,7 @@ def _validate_positive_int(value):
         return None
 
 
-def scraping_task(school_no, centre_mid, roll_start, roll_end, state="default", workers=1):
+def scraping_task(school_no: str, centre_mid: str, roll_start: int, roll_end: int, state: str = "default", workers: int = 1) -> None:
     global scraping_in_progress
     try:
         for msg in playwright_scraper(school_no, centre_mid, roll_start, roll_end, stop_event, state, workers):
@@ -63,7 +66,14 @@ def scraping_task(school_no, centre_mid, roll_start, roll_end, state="default", 
             log_lines.append("__FINISHED__")
 
 
-def init_routes(app):
+def init_routes(app: Any) -> None:
+    @app.route('/api/thresholds')
+    def get_thresholds():
+        import json
+        thresholds_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cbse', 'thresholds.json')
+        with open(thresholds_path, 'r') as f:
+            return jsonify(json.load(f))
+
     @app.route('/favicon.ico')
     def favicon():
         svg = (

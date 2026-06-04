@@ -1,16 +1,13 @@
-"""
-Interactions with the CBSE result search form (navigate, fill, submit).
+from __future__ import annotations
 
->>> EDIT THIS FILE if CBSE changes form submission behavior, navigation, or the
-    "Result Not Found" / dialog flow. <<<
-"""
 import asyncio
+from typing import Any
 
 from cbse.endpoints import RESULT_URL
 from cbse.selectors import XPATH_ROLL, XPATH_SCHOOL, XPATH_ADMIT
 
 
-async def ensure_on_form(page, timeout=8000):
+async def ensure_on_form(page: Any, timeout: int = 8000) -> None:
     """Return without action if the search form is already visible, else navigate there."""
     try:
         form_filename = RESULT_URL.split('/')[-1]
@@ -23,7 +20,7 @@ async def ensure_on_form(page, timeout=8000):
     await page.locator(XPATH_ROLL).wait_for(state="visible", timeout=5000)
 
 
-async def fill_and_submit(page, roll, school_no, admid):
+async def fill_and_submit(page: Any, roll: int, school_no: str, admid: str) -> None:
     """Fill form fields and submit — verifies values were accepted before pressing Enter."""
     roll_loc = page.locator(XPATH_ROLL)
     school_loc = page.locator(XPATH_SCHOOL)
@@ -49,7 +46,7 @@ async def fill_and_submit(page, roll, school_no, admid):
         await asyncio.sleep(0.3)
 
 
-async def fast_crack_submit(page, roll, school_no, admid):
+async def fast_crack_submit(page: Any, roll: int, school_no: str, admid: str) -> None:
     """Fill+submit for cracking — single JS call to fill all fields, tighter timeout."""
     await page.evaluate("""([r, s, a]) => {
         const inputs = document.querySelectorAll('form input');

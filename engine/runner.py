@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Scrape orchestration / runner."""
 import os
 import csv
@@ -7,6 +9,7 @@ import logging
 import threading
 import queue
 import asyncio
+from typing import Any, Generator
 
 logger = logging.getLogger(__name__)
 
@@ -26,20 +29,12 @@ from storage.results_store import ensure_data_dir, get_existing_rolls
 from storage.prefix_map import load_prefix_map, save_prefix_map
 
 
-async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, stop_event, q, prefix_map, csv_file, learned_prefixes, known_prefixes):
-    if not async_playwright:
-        q.put("[X] Playwright not installed.")
-        return
-
-    killed = cleanup_orphaned_browsers()
-    if killed > 0:
-        q.put(f"[*] Cleaned up {killed} orphaned browser process(es) from previous run.")
-
-    pw = await async_playwright().start()
-    
-    # Headful on purpose: headless/server runs get IP-banned fast. Run locally.
+async def _launch_browser_pages(
+    pw: Any, workers: int, stop_event: threading.Event, q: queue.Queue[str],
+) -> tuple[Any, list[Any]]:
+    """Launch browser and create stealth worker pages. Returns (browser, pages)."""
     browser = await pw.chromium.launch(
-        headless=False, 
+        headless=False,
         args=[
             '--disable-blink-features=AutomationControlled',
             '--disable-infobars',
@@ -51,10 +46,10 @@ async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, sto
         ]
     )
 
-    pages = []
+    pages: list[Any] = []
     q.put(f"[*] Launching Playwright (Chromium Async) with {workers} context(s)...")
 
-    async def launch_worker(i):
+    async def launch_worker(i: int) -> Any | None:
         for attempt in range(2):
             if stop_event and stop_event.is_set():
                 return None
@@ -62,8 +57,8 @@ async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, sto
                 ctx = await create_stealth_context(browser)
                 page = await ctx.new_page()
 
-                def make_handler(p):
-                    def handle_dialog(dialog):
+                def make_handler(p: Any):
+                    def handle_dialog(dialog: Any):
                         p._dialog_fired = True
                         asyncio.create_task(dialog.accept())
                     return handle_dialog
@@ -95,6 +90,106 @@ async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, sto
         if batch_start + BATCH < workers:
             await asyncio.sleep(random.uniform(0.5, 1.0))
 
+    return browser, pages
+
+
+async def _crack_prefix_for_roll(
+    roll: int, school_no: str, centre_mid: str,
+    prefix_map: dict[int, tuple[str, str]],
+    pages: list[Any], q: queue.Queue[str],
+    stop_event: threading.Event,
+    learned_prefixes: list[str], known_prefixes: list[str],
+    save_partial_data: Any,
+) -> tuple[str | None, str | None, Any | None]:
+    """Attempt to crack the prefix for a roll number. Returns (prefix, admid, winning_page)."""
+    from engine.prefix_ranking import build_school_prefix_ranking
+
+    school_ranking_live, global_ranking_live, _ = build_school_prefix_ranking(prefix_map, school_no)
+    live_learned = school_ranking_live if school_ranking_live else global_ranking_live
+
+    q.put("   -> Missing prefix. Attempting to crack asynchronously...")
+
+    test_prefixes: list[str] = []
+    seen: set[str] = set()
+    for p in live_learned + known_prefixes + ALL_COMBOS:
+        if p not in seen:
+            seen.add(p)
+            test_prefixes.append(p)
+
+    total_to_try = len(test_prefixes)
+
+    prefix_queue: asyncio.Queue[str] = asyncio.Queue()
+    for p in test_prefixes:
+        prefix_queue.put_nowait(p)
+
+    found_event = asyncio.Event()
+    result_list: list[tuple[str, str, int]] = []
+    throttle_until = [0.0]
+
+    tasks = []
+    for i in range(len(pages)):
+        tasks.append(asyncio.create_task(worker_crack_async(
+            pages[i], prefix_queue, roll, school_no, centre_mid, found_event, result_list, i, q, stop_event, throttle_until
+        )))
+
+    done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+    for t in pending:
+        t.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+
+    q.put(f"   [i] Finished prefix search for roll {roll} ({total_to_try} candidates).")
+
+    if result_list:
+        res = result_list[0]
+        prefix = res[0]
+        admid = res[1]
+        winning_page = pages[res[2]] if len(res) > 2 else None
+        prefix_map[roll] = (prefix, admid)
+        q.put(f"   [+] CRACKED: Prefix {prefix} works!")
+        save_partial_data()
+        return prefix, admid, winning_page
+
+    return None, None, None
+
+
+async def _extract_result(
+    target_page: Any, roll: int, school_no: str, admid: str,
+    roll_start_time: float, q: queue.Queue[str],
+) -> dict | None:
+    """Extract student data from a page that has (or should have) the result displayed."""
+    body_text = await target_page.inner_text('body')
+    if "Candidate Name" not in body_text:
+        await fill_and_submit(target_page, roll, school_no, admid)
+        try:
+            await target_page.wait_for_function('document.body.innerText.includes("Candidate Name")', timeout=3000)
+        except Exception:
+            pass
+
+    content = await target_page.content()
+    student_data = parse_student_html(content, roll, admid)
+    if student_data:
+        roll_elapsed = time.time() - roll_start_time
+        q.put(f"   [+] Extracted: {student_data['Name']} - {student_data['ResultStatus']} ({roll_elapsed:.1f}s)")
+    return student_data
+
+
+async def main_async(
+    school_no: str, centre_mid: str, rolls_to_scrape: list[int],
+    state: str, workers: int, stop_event: threading.Event,
+    q: queue.Queue[str], prefix_map: dict[int, tuple[str, str]],
+    csv_file: str, learned_prefixes: list[str], known_prefixes: list[str],
+) -> None:
+    if not async_playwright:
+        q.put("[X] Playwright not installed.")
+        return
+
+    killed = cleanup_orphaned_browsers()
+    if killed > 0:
+        q.put(f"[*] Cleaned up {killed} orphaned browser process(es) from previous run.")
+
+    pw = await async_playwright().start()
+    browser, pages = await _launch_browser_pages(pw, workers, stop_event, q)
+
     if not pages:
         q.put("[X] Error: Could not launch any browser contexts.")
         try:
@@ -105,9 +200,9 @@ async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, sto
         return
 
     q.put(f"[*] All {len(pages)} workers online. Starting async scrape...")
-    
-    results_data = []
-    
+
+    results_data: list[dict] = []
+
     def save_partial_data():
         save_prefix_map(prefix_map)
         if results_data:
@@ -146,52 +241,10 @@ async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, sto
             prefix, admid = prefix_map[roll]
             q.put(f"   -> Using mapped admit ID: {admid}")
         else:
-            school_ranking_live, global_ranking_live, _ = build_school_prefix_ranking(prefix_map, school_no)
-            live_learned = school_ranking_live if school_ranking_live else global_ranking_live
-            
-            q.put("   -> Missing prefix. Attempting to crack asynchronously...")
-            
-            # Priority: school-specific freq → global freq → state guesses → exhaustive brute force
-            test_prefixes = []
-            seen = set()
-            for p in live_learned + known_prefixes + ALL_COMBOS:
-                if p not in seen:
-                    seen.add(p)
-                    test_prefixes.append(p)
-
-            total_to_try = len(test_prefixes)
-
-            prefix_queue = asyncio.Queue()
-            for p in test_prefixes:
-                prefix_queue.put_nowait(p)
-
-            found_event = asyncio.Event()
-            result_list = []
-            throttle_until = [0.0]  # shared rate-limit cooldown timestamp
-
-            tasks = []
-            for i in range(len(pages)):
-                tasks.append(asyncio.create_task(worker_crack_async(
-                    pages[i], prefix_queue, roll, school_no, centre_mid, found_event, result_list, i, q, stop_event, throttle_until
-                )))
-
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
-            # Cancel any stragglers (shouldn't happen, but be safe)
-            for t in pending:
-                t.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
-
-            q.put(f"   [i] Finished prefix search for roll {roll} ({total_to_try} candidates).")
-
-            if result_list:
-                res = result_list[0]
-                prefix = res[0]
-                admid = res[1]
-                if len(res) > 2:
-                    winning_page = pages[res[2]]
-                prefix_map[roll] = (prefix, admid)
-                q.put(f"   [+] CRACKED: Prefix {prefix} works!")
-                save_partial_data()
+            prefix, admid, winning_page = await _crack_prefix_for_roll(
+                roll, school_no, centre_mid, prefix_map, pages, q, stop_event,
+                learned_prefixes, known_prefixes, save_partial_data
+            )
 
         if stop_event and stop_event.is_set():
             continue
@@ -207,24 +260,13 @@ async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, sto
 
         try:
             target_page = winning_page if winning_page is not None else pages[0]
-            body_text = await target_page.inner_text('body')
-            if "Candidate Name" not in body_text:
-                await fill_and_submit(target_page, roll, school_no, admid)
-                try:
-                    await target_page.wait_for_function('document.body.innerText.includes("Candidate Name")', timeout=3000)
-                except Exception:
-                    pass
-
-            content = await target_page.content()
-            student_data = parse_student_html(content, roll, admid)
+            student_data = await _extract_result(target_page, roll, school_no, admid, roll_start, q)
             if student_data:
                 results_data.append(student_data)
-                roll_elapsed = time.time() - roll_start
-                q.put(f"   [+] Extracted: {student_data['Name']} - {student_data['ResultStatus']} ({roll_elapsed:.1f}s)")
         except Exception as e:
             q.put(f"   [X] Parsing Error: {str(e)}")
 
-        async def reset_page(p):
+        async def reset_page(p: Any) -> None:
             try:
                 await p.goto(RESULT_URL, wait_until='domcontentloaded', timeout=8000)
                 await p.locator(XPATH_ROLL).wait_for(state="visible", timeout=5000)
@@ -252,7 +294,12 @@ async def main_async(school_no, centre_mid, rolls_to_scrape, state, workers, sto
     q.put(f"\n[+] SCRAPING COMPLETED SUCCESSFULLY. Total time: {mins}m {secs}s")
 
 
-def async_runner_thread(school_no, centre_mid, rolls_to_scrape, state, workers, stop_event, q, prefix_map, csv_file, learned_prefixes, known_prefixes):
+def async_runner_thread(
+    school_no: str, centre_mid: str, rolls_to_scrape: list[int],
+    state: str, workers: int, stop_event: threading.Event,
+    q: queue.Queue[str], prefix_map: dict[int, tuple[str, str]],
+    csv_file: str, learned_prefixes: list[str], known_prefixes: list[str],
+) -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -264,7 +311,10 @@ def async_runner_thread(school_no, centre_mid, rolls_to_scrape, state, workers, 
         q.put("__ENGINE_DONE__")
 
 
-def run_scraper_generator(school_no, centre_mid, roll_start, roll_end, stop_event=None, state="default", workers=1):
+def run_scraper_generator(
+    school_no: str, centre_mid: str, roll_start: int, roll_end: int,
+    stop_event: threading.Event | None = None, state: str = "default", workers: int = 1,
+) -> Generator[str, None, None]:
     ensure_data_dir()
     
     csv_file = os.path.join(DATA_DIR, f"{school_no}_results.csv")
@@ -296,7 +346,7 @@ def run_scraper_generator(school_no, centre_mid, roll_start, roll_end, stop_even
     state_prefixes = STATE_PREFIXES.get(state, STATE_PREFIXES["default"])
     known_prefixes = list(dict.fromkeys(state_prefixes + STATE_PREFIXES["default"]))
 
-    q = queue.Queue()
+    q: queue.Queue[str] = queue.Queue()
     t = threading.Thread(target=async_runner_thread, args=(
         school_no, centre_mid, rolls_to_scrape, state, workers, stop_event, 
         q, prefix_map, csv_file, learned_prefixes, known_prefixes

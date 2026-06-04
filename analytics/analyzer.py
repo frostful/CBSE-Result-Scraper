@@ -1,11 +1,22 @@
+from __future__ import annotations
 import csv
 import os
 import io
+import json
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from config import DATA_DIR, PREFIX_MAP_FILE
 
-def load_results_csv(school_no):
+_THRESHOLDS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cbse', 'thresholds.json')
+
+def _load_thresholds() -> dict:
+    with open(_THRESHOLDS_FILE, 'r') as f:
+        return json.load(f)
+
+_THRESHOLDS = _load_thresholds()
+
+
+def load_results_csv(school_no: str) -> tuple[list[dict] | None, dict[str, str] | None]:
     students, subjects_map = {}, {}
     csv_file = os.path.join(DATA_DIR, f"{school_no}_results.csv")
     if not os.path.exists(csv_file):
@@ -50,14 +61,17 @@ def load_results_csv(school_no):
 
     return list(students.values()), subjects_map
 
-def process_student_data(students, subjects_map):
+
+def process_student_data(students: list[dict], subjects_map: dict[str, str]) -> list[dict]:
     scored_students = []
+    prac_max_map = _THRESHOLDS['practical_max']
+    skip_subs = _THRESHOLDS['skip_subjects']
     
     for s in students:
         total_score, count, fail_count_sub = 0, 0, 0
         
         for sub_code in s['marks']:
-            if sub_code in ['500', '502', '503']:
+            if sub_code in skip_subs:
                 continue
                 
             t_mark = s['marks'][sub_code]['t']
@@ -66,11 +80,7 @@ def process_student_data(students, subjects_map):
             total_score += sub_total
             count += 1
             
-            max_p = 20
-            # NOTE: Duplicated in main.js (subject failure rates). Keep in sync.
-            if sub_code in ['029', '048', '042', '043', '044', '065', '083']: max_p = 30
-            elif sub_code in ['049', '034']: max_p = 70
-            elif sub_code in ['811', '802']: max_p = 40
+            max_p = prac_max_map.get(sub_code, prac_max_map['default'])
             max_t = 100 - max_p
             
             # CBSE pass criteria: min 33% overall, plus subject-specific theory/practical thresholds
@@ -101,7 +111,8 @@ def process_student_data(students, subjects_map):
     scored_students.sort(key=lambda x: x['percentage'], reverse=True)
     return scored_students
 
-def get_dashboard_data(school_no):
+
+def get_dashboard_data(school_no: str) -> dict:
     students, subjects_map = load_results_csv(school_no)
     if not students:
         return {"error": "No data found."}
@@ -112,7 +123,8 @@ def get_dashboard_data(school_no):
         "subjects": subjects_map
     }
 
-def delete_database(school_no):
+
+def delete_database(school_no: str) -> bool:
     csv_file = os.path.join(DATA_DIR, f"{school_no}_results.csv")
     if os.path.exists(csv_file):
         try:
@@ -122,7 +134,8 @@ def delete_database(school_no):
             return False
     return True
 
-def delete_record(roll_to_delete, school_no):
+
+def delete_record(roll_to_delete: str, school_no: str) -> bool:
     csv_file = os.path.join(DATA_DIR, f"{school_no}_results.csv")
     if not os.path.exists(csv_file):
         return False
@@ -149,7 +162,8 @@ def delete_record(roll_to_delete, school_no):
     except Exception:
         return False
 
-def generate_excel_bytes(school_no):
+
+def generate_excel_bytes(school_no: str) -> io.BytesIO | None:
     from openpyxl.chart import PieChart, BarChart, Reference
     from openpyxl.chart.label import DataLabelList
     from openpyxl.chart.series import DataPoint

@@ -1,6 +1,22 @@
 let students = [];
 let subjects = {};
 
+let THRESHOLDS = null;
+async function loadThresholds() {
+    if (THRESHOLDS) return THRESHOLDS;
+    try {
+        const resp = await fetch('/api/thresholds');
+        THRESHOLDS = await resp.json();
+    } catch (e) {
+        // Fallback hardcoded defaults if fetch fails
+        THRESHOLDS = {
+            practical_max: { default: 20 },
+            skip_subjects: ['500', '502', '503']
+        };
+    }
+    return THRESHOLDS;
+}
+
 function maskDigits(str) {
     if (!window.DEMO_MODE) return str;
     return String(str).replace(/\d/g, '*');
@@ -367,7 +383,8 @@ function getSubjectCategory(subjectName) {
     return 'ARTS & VOCATIONAL';
 }
 
-function renderAnalytics() {
+async function renderAnalytics() {
+    await loadThresholds();
     const emptyStateEl = document.getElementById('analyticsEmptyState');
     const chartsContentEl = document.getElementById('analyticsChartsContent');
     
@@ -624,16 +641,14 @@ function renderAnalytics() {
 
     // 6. Subject Failure Rates Bar
     const failData = {};
+    const pMax = THRESHOLDS.practical_max;
+    const skipSubs = THRESHOLDS.skip_subjects;
     filteredStudents.forEach(s => {
         for (const [code, marks] of Object.entries(s.marks)) {
-            if (['500', '502', '503'].includes(code)) continue;
+            if (skipSubs.includes(code)) continue;
             if (!failData[code]) failData[code] = { total: 0, fails: 0 };
             failData[code].total++;
-            // NOTE: Duplicated in core_analyzer.py process_student_data(). Keep in sync.
-            let p_m = 20;
-            if (['029', '048', '042', '043', '044', '065', '083'].includes(code)) p_m = 30;
-            else if (['049', '034'].includes(code)) p_m = 70;
-            else if (['811', '802'].includes(code)) p_m = 40;
+            let p_m = pMax[code] !== undefined ? pMax[code] : pMax['default'];
             let t_m = 100 - p_m;
             let pt = 26; if(t_m==70) pt=23; else if(t_m==30) pt=10; else if(t_m==60) pt=20; else if(t_m==100) pt=33;
             let pp = 7; if(p_m==30) pp=10; else if(p_m==70) pp=23; else if(p_m==40) pp=13; else if(p_m==0) pp=0;

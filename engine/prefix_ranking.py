@@ -2,7 +2,7 @@
 from collections import Counter
 
 
-def build_school_prefix_ranking(prefix_map, school_no):
+def build_school_prefix_ranking(prefix_map: dict[int, tuple[str, str]], school_no: str) -> tuple[list[str], list[str], int]:
     """Frequency-sorted prefix list, school-specific if enough data, else global."""
     school_prefix = str(school_no)[:2]
     

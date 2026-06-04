@@ -7,5 +7,5 @@ CBSE admit-card ID = PREFIX (2 letters) + last 2 of roll + first 2 of school + c
 """
 
 
-def derive_admid(prefix, roll_no, school_no, centre_mid):
+def derive_admid(prefix: str, roll_no: int, school_no: str, centre_mid: str) -> str:
     return f"{prefix.upper()}{str(roll_no)[-2:]}{str(school_no)[:2]}{centre_mid}"

@@ -4,12 +4,12 @@ import csv
 from config import DATA_DIR
 
 
-def ensure_data_dir():
+def ensure_data_dir() -> None:
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
 
 
-def get_existing_rolls(school_no):
+def get_existing_rolls(school_no: str) -> set[int]:
     rolls = set()
     csv_file = os.path.join(DATA_DIR, f"{school_no}_results.csv")
     if os.path.exists(csv_file):

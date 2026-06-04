@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 """Browser/stealth plumbing."""
 import random
+from typing import Any
 import psutil
 
 try:
@@ -17,14 +20,14 @@ except ImportError:
     stealth_helper = None
 
 
-async def abort_useless_requests(route):
+async def abort_useless_requests(route: Any) -> None:
     if route.request.resource_type in ["image", "stylesheet", "media", "font"]:
         await route.abort()
     else:
         await route.fallback()
 
 
-async def create_stealth_context(browser):
+async def create_stealth_context(browser: Any) -> Any:
     user_agent = ua.random if ua else 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
     context = await browser.new_context(
         viewport={'width': random.randint(1280, 1920), 'height': random.randint(800, 1080)},
@@ -37,7 +40,7 @@ async def create_stealth_context(browser):
     return context
 
 
-def cleanup_orphaned_browsers():
+def cleanup_orphaned_browsers() -> int:
     try:
         killed = 0
         for proc in psutil.process_iter(['pid', 'exe']):

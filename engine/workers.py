@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 """Async prefix-cracking worker."""
 import time
 import random
 import logging
 import asyncio
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +15,19 @@ from cbse.admit_id import derive_admid
 from cbse.form import ensure_on_form, fast_crack_submit
 
 
-async def worker_crack_async(page, prefix_queue, roll, school_no, centre_mid, found_event, result_list, thread_id, q, stop_event, throttle_until):
+async def worker_crack_async(
+    page: Any,
+    prefix_queue: asyncio.Queue[str],
+    roll: int,
+    school_no: str,
+    centre_mid: str,
+    found_event: asyncio.Event,
+    result_list: list[tuple[str, str, int]],
+    thread_id: int,
+    q: Any,
+    stop_event: Any,
+    throttle_until: list[float],
+) -> None:
     """Pull prefixes from a shared queue with rate-limit throttling."""
     on_form = True  # Track form state to skip unnecessary ensure_on_form calls
 
